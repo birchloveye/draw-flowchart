@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__PAGE_TITLE__</title>
+<style>
+:root { --paper: #f3eee3; --ink: #2a2522; --muted: #7a7166; --line: #d9d0bf; --red: #b33a2f; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #e9e3d6; color: var(--ink);
+  font: 14px/1.6 "American Typewriter", "Songti SC", STSong, serif; }
+main { max-width: 1560px; margin: 0 auto; padding: 16px 16px 40px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 4px 12px; color: var(--muted); }
+.bar label { display: inline-flex; gap: 6px; align-items: center; }
+.bar input[type=range] { width: 120px; accent-color: var(--red); }
+button { font: inherit; padding: 2px 12px; border-radius: 4px; border: 1px solid #b9ad98; background: #faf6ee; color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--red); color: var(--red); }
+#poster svg { display: block; width: 100%; height: auto; box-shadow: 0 2px 14px rgba(60, 45, 20, .18); }
+#msg { color: var(--red); }
+details { margin-top: 14px; color: var(--muted); }
+body.bare { background: transparent; }
+body.bare .bar, body.bare details { display: none; }
+body.bare main { max-width: none; padding: 0; }
+body.bare #poster svg { width: auto; box-shadow: none; }
+textarea { width: 100%; min-height: 300px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; margin: 8px 0;
+  background: #faf6ee; color: var(--ink); border: 1px solid #b9ad98; border-radius: 4px; padding: 8px; }
+</style>
+</head>
+<body>
+<main>
+<div class="bar">
+  <label><span data-i18n="wobble">Ink wobble</span> <input id="wobble" type="range" min="0" max="3" step="0.2" value="1.2"> <span id="wobbleVal">1.2</span></label>
+  <label><input id="grain" type="checkbox" checked> <span data-i18n="grain">Paper grain</span></label>
+  <button id="pngBtn" data-i18n="png">Export PNG</button>
+  <button id="svgBtn" data-i18n="svg">Export SVG</button>
+  <span id="msg"></span>
+</div>
+<div id="poster"></div>
+<details>
+  <summary data-i18n="source">Mermaid source (edits here are a preview only; to keep them, edit flow.mmd and run make_poster.py)</summary>
+  <textarea id="src" spellcheck="false"></textarea>
+  <button id="redrawBtn" data-i18n="redraw">Redraw from source</button>
+</details>
+</main>
+
+<!-- Layout library: dagre 0.8.5 (bundled copy, works offline; MIT, see THIRD_PARTY_NOTICES.md) -->
+<script>
+/*__DAGRE__*/
+</script>
+<script>
+// Content: filled in by make_poster.py from flow.mmd, poster.json and the photos. Do not edit by hand.
+const CONTENT = /*__CONTENT__*/;
+</script>
+<script>
+// ======================= Settings (tune here; poster.json "style" can override any of them) =======================
+const CONFIG = {
+  // Look
+  paper: "#f8f4ea",          // paper colour
+  ink: "#2a2522",            // ink: lines and text
+  red: "#b33a2f",            // red: problem nodes and the step into them
+  redSoft: "#e9b2ab",        // soft red halo around red lines
+  bracket: "#a3444a",        // colour of [conditions] in edge labels
+  fills: {                   // node fills by class name used in the Mermaid (see references/mermaid-rules.md)
+    blue: "#dde7f0",         //   pale blue
+    cream: "#f7eedb",        //   cream, like a paper ticket
+    lavender: "#e6dfee",     //   pale lavender
+    wood: "#ead8b9",         //   wooden-sign tan
+    sage: "#dfe8d6",         //   pale green
+    breaks: "#f1cfcb",       //   problem: pink fill + red double ring + number
+    default: "#faf5ea",      //   nodes without a class
+  },
+  inkWobble: 1.2,            // ink wobble: 0 = perfectly smooth, 1-1.5 = hand-inked, >2 = visibly crooked
+  grain: true,               // paper grain
+  shadowOffset: 5,           // offset of the hatched shadow (px, down-right)
+  hatchGap: 3.2,             // spacing of the hatch lines
+  radius: 12,                // node corner radius
+  corner: 10,                // radius of the rounded corners on connectors
+  // Fonts: system fonts only, so exported images look the same as the page. Per glyph the first installed
+  // font wins (macOS, then Windows, then Linux names). Latin uses typewriter / Baskerville, Chinese uses Songti / Kaiti.
+  fontNode: '"American Typewriter", "Courier Prime", "Courier New", "Songti SC", STSong, SimSun, "Noto Serif CJK SC", "Source Han Serif SC", serif',  // nodes
+  fontLabel: 'Baskerville, "Libre Baskerville", Georgia, "Kaiti SC", STKaiti, KaiTi, "AR PL UKai CN", "Noto Serif CJK SC", serif',                     // edge labels (Latin in italics)
+  fontTitle: '"American Typewriter", "Courier Prime", "Courier New", "Songti SC", STSong, SimSun, "Noto Serif CJK SC", "Source Han Serif SC", serif', // big title
+  fontStamp: '"Songti SC", STSong, SimSun, "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif',  // red stamp (bold)
+  nodeFont: 19, labelFont: 16,
+  nodeSpacing: 1.2,          // letter spacing in nodes (px)
+  labelSpacing: 0.6,         // letter spacing in edge labels (px)
+  nodeMaxWidth: 230,         // wrap node text wider than this (px)
+  labelMaxWidth: 165,        // wrap edge labels wider than this (px)
+  padX: 22, padY: 13,        // node padding
+  // Layout (dagre, top to bottom)
+  nodesep: 36,               // gap between neighbours in one rank
+  ranksep: 52,               // gap between ranks (edge labels take a rank of their own)
+  edgesep: 22,               // gap between parallel edges
+  margin: 56,                // poster margin
+  gap: 30,                   // minimum gap between title, chart, photos and card
+  pngScale: 2,               // scale of the PNG exported from the page
+};
+
+// poster.json "style" overrides any setting above ("fills" is merged by colour name)
+(() => {
+  const st = (CONTENT.poster && CONTENT.poster.style) || {};
+  const fills = Object.assign({}, CONFIG.fills, st.fills || {});
+  Object.assign(CONFIG, st); CONFIG.fills = fills;
+})();
+
+// Language of the page chrome and default legend: poster.json "lang", else Chinese if the title has Chinese
+const LANG = (CONTENT.poster && CONTENT.poster.lang) ||
+  (/[\u4e00-\u9fff]/.test((CONTENT.poster && CONTENT.poster.title) || "") ? "zh" : "en");
+const I18N = {
+  en: { wobble: "Ink wobble", grain: "Paper grain", png: "Export PNG", svg: "Export SVG", redraw: "Redraw from source",
+        source: "Mermaid source (edits here are a preview only; to keep them, edit flow.mmd and run make_poster.py)",
+        failed: "Cannot draw: ", pngFailed: "PNG export failed; try Export SVG.", noDagre: "dagre did not load", file: "flowchart",
+        legend: { title: "How to read", broken: "Breaks a rule or gets stuck", redLine: "The step into the problem" } },
+  zh: { wobble: "墨线抖动", grain: "纸张纹理", png: "导出 PNG", svg: "导出 SVG", redraw: "按源码重画",
+        source: "Mermaid 源码（在这里改只是临时预览；要保存请改 flow.mmd 再运行 make_poster.py）",
+        failed: "画不出来：", pngFailed: "导出 PNG 失败，可以先导出 SVG。", noDagre: "没加载到 dagre", file: "流程图",
+        legend: { title: "怎么看", broken: "打破规则或卡住", redLine: "走进问题的那一步" } },
+};
+const T = I18N[LANG] || I18N.en;
+
+// Poster text (from poster.json)
+const POSTER = Object.assign({
+  kicker: "", title: "", subtitle: "",
+  legend: T.legend,
+  stamp: "", photos: [], card: null,
+}, CONTENT.poster);
+// ================================================================
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const START = "__start", END = "__end";
+
+// ---------- 1. Read the Mermaid ----------
+function parseStyle(s) {
+  const o = {};
+  for (const part of s.split(",")) {
+    const [k, v] = part.split(":").map((x) => x && x.trim());
+    if (k === "fill") o.fill = v; else if (k === "stroke") o.stroke = v;
+  }
+  return o;
+}
+function stripBrackets(s) {
+  return s.replace(/^[\[\(\{>]+/, "").replace(/[\]\)\}]+$/, "").replace(/^"(.*)"$/, "$1").trim();
+}
+function parseMermaid(src) {
+  const out = { type: "state", nodes: new Map(), edges: [], classDefs: {}, nodeClass: {}, breakOrder: [] };
+  let lines = src.split(/\r?\n/);
+  if (lines[0] && lines[0].trim() === "---") {
+    let i = 1; while (i < lines.length && lines[i].trim() !== "---") i++;
+    lines = lines.slice(i + 1);
+  }
+  const ensure = (id, label) => {
+    if (!out.nodes.has(id)) out.nodes.set(id, { id, label: label == null ? id : label });
+    else if (label != null) out.nodes.get(id).label = label;
+    return id;
+  };
+  const flowNode = (tok) => {
+    const m = tok.trim().match(/^([\w\-.]+)\s*(.*)$/);
+    if (!m) throw new Error("cannot read node: " + tok);
+    return ensure(m[1], m[2] ? stripBrackets(m[2]) : null);
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/%%.*$/, "").trim();
+    if (!line) continue;
+    let m;
+    if (/^stateDiagram(-v2)?\b/.test(line)) { out.type = "state"; continue; }
+    if (/^(flowchart|graph)\b/.test(line)) { out.type = "flow"; continue; }
+    if (/^direction\s/.test(line)) continue;
+    if ((m = line.match(/^classDef\s+(\S+)\s+(.+)$/))) { out.classDefs[m[1]] = parseStyle(m[2]); continue; }
+    if ((m = line.match(/^class\s+(\S+)\s+(\S+)$/))) {
+      for (const id of m[1].split(",").map((x) => x.trim())) {
+        out.nodeClass[id] = m[2];
+        if (m[2] === "breaks" && !out.breakOrder.includes(id)) out.breakOrder.push(id);
+      }
+      continue;
+    }
+    if (/^(state\s|note\s|\}|end$|subgraph|style\s|linkStyle|click\s)/.test(line)) continue;
+    if (out.type === "state") {
+      if ((m = line.match(/^(\[\*\]|[\w\-.]+)\s*-->\s*(\[\*\]|[\w\-.]+)\s*(?::\s*(.*))?$/))) {
+        const a = m[1] === "[*]" ? ensure(START, "") : ensure(m[1]);
+        const b = m[2] === "[*]" ? ensure(END, "") : ensure(m[2]);
+        out.edges.push({ from: a, to: b, label: (m[3] || "").trim() });
+        continue;
+      }
+      if ((m = line.match(/^([\w\-.]+)\s*:\s*(.+)$/))) { ensure(m[1], m[2].trim()); continue; }
+      if ((m = line.match(/^([\w\-.]+)$/))) { ensure(m[1]); continue; }
+    } else {
+      if ((m = line.match(/^(.+?)\s*--\s+([^>]+?)\s+-->\s*(.+)$/)) ||
+          (m = line.match(/^(.+?)\s*(?:-->|==>|-\.->|---)\s*(?:\|([^|]*)\|)?\s*(.+)$/))) {
+        out.edges.push({ from: flowNode(m[1]), to: flowNode(m[3]), label: (m[2] || "").trim() });
+        continue;
+      }
+      flowNode(line); continue;
+    }
+    throw new Error("cannot read line: " + line);
+  }
+  if (!out.nodes.size) throw new Error("no nodes in the source");
+  return out;
+}
+
+// ---------- 2. Measure and wrap text ----------
+const mctx = document.createElement("canvas").getContext("2d");
+const CJK = "\u2460-\u24ff\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f";
+const TOKEN_RE = new RegExp(`[${CJK}]|[^\\s${CJK}]+|\\s+`, "g");
+const IS_CJK = new RegExp(`[${CJK}]`);
+
+function measure(text, font, spacing) {
+  mctx.font = font;
+  return mctx.measureText(text).width + spacing * [...text].length;
+}
+// Prefer breaking at spaces; keep the lines about equally long
+function wrapText(text, font, spacing, maxW) {
+  text = text.trim();
+  const canWord = /\s/.test(text) && text.split(/\s+/).every((w) => measure(w, font, spacing) <= maxW);
+  const a = wrapWith(text, font, spacing, maxW, false);
+  if (!canWord) return a;
+  const b = wrapWith(text, font, spacing, maxW, true);
+  // Use the space breaks (keeps phrases whole) unless they need more lines or are much more ragged
+  return b.lines.length <= a.lines.length && b.width <= a.width * 1.4 ? b : a;
+}
+function wrapWith(text, font, spacing, maxW, byWord) {
+  const greedy = (w) => {
+    const tokens = byWord ? text.split(/(\s+)/) : (text.match(TOKEN_RE) || []);
+    const lines = []; let cur = "";
+    for (const t of tokens) {
+      const next = cur + t;
+      if (cur.trim() && measure(next.trim(), font, spacing) > w) { lines.push(cur.trim()); cur = /^\s+$/.test(t) ? "" : t; }
+      else cur = next;
+    }
+    if (cur.trim()) lines.push(cur.trim());
+    return lines;
+  };
+  let lines = greedy(maxW);
+  if (lines.length > 1) {
+    let lo = measure(text, font, spacing) / lines.length - 1, hi = maxW;
+    while (hi - lo > 2) { const mid = (lo + hi) / 2; if (greedy(mid).length <= lines.length) hi = mid; else lo = mid; }
+    lines = greedy(hi);
+  }
+  return { lines, width: Math.max(0, ...lines.map((l) => measure(l, font, spacing))) };
+}
+
+// ---------- 3. Layout (dagre, top to bottom) ----------
+const nodeFontCSS = () => `${CONFIG.nodeFont}px ${CONFIG.fontNode}`;
+const labelFontCSS = () => `italic ${CONFIG.labelFont}px ${CONFIG.fontLabel}`;
+
+function layoutGraph(model) {
+  const g = new dagre.graphlib.Graph({ multigraph: true });
+  g.setGraph({ rankdir: "TB", nodesep: CONFIG.nodesep, ranksep: CONFIG.ranksep, edgesep: CONFIG.edgesep, marginx: 20, marginy: 20 });
+  g.setDefaultEdgeLabel(() => ({}));
+  const nLineH = Math.round(CONFIG.nodeFont * 1.45), lLineH = Math.round(CONFIG.labelFont * 1.4);
+  for (const n of model.nodes.values()) {
+    if (n.id === START || n.id === END) { g.setNode(n.id, { id: n.id, width: 26, height: 26 }); continue; }
+    const t = wrapText(n.label, nodeFontCSS(), CONFIG.nodeSpacing, CONFIG.nodeMaxWidth);
+    g.setNode(n.id, { id: n.id, lines: t.lines, lineH: nLineH,
+      width: Math.ceil(t.width + 2 * CONFIG.padX), height: t.lines.length * nLineH + 2 * CONFIG.padY });
+  }
+  model.edges.forEach((e, i) => {
+    const self = e.from === e.to;
+    const t = e.label ? wrapText(e.label, labelFontCSS(), CONFIG.labelSpacing, CONFIG.labelMaxWidth) : null;
+    g.setEdge(e.from, e.to, {
+      lines: t ? t.lines : [], lineH: lLineH, self, labelpos: "c",
+      // Labels sit to the right of their line: reserve room for the line and a gap (and the curl of a self-loop)
+      width: t ? Math.ceil(t.width + (self ? 40 : 22)) : 0,
+      height: t ? t.lines.length * lLineH + 10 : 0,
+    }, "e" + i);
+  });
+  dagre.layout(g);
+  return g;
+}
+
+// ---------- 4. Draw ----------
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  return `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r} ` +
+         `A${r},${r} 0 0 1 ${x + w - r},${y + h} H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+}
+// One line of text: Latin runs in italics (edge labels), [conditions] coloured
+function addLine(textEl, line, x, y, opts, state) {
+  const span = el("tspan", { x, y, "dominant-baseline": "central" }, textEl);
+  const re = new RegExp(`(\\[|\\]|[${CJK}\\s]+|[^${CJK}\\s\\[\\]]+)`, "g");
+  for (const part of line.match(re) || []) {
+    if (part === "[") state.inBracket = true;
+    const t = el("tspan", {
+      fill: state.inBracket && opts.bracketColor ? opts.bracketColor : null,
+      "font-style": opts.italicLatin && !IS_CJK.test(part) && part.trim() ? "italic" : "normal",
+    }, span);
+    t.textContent = part;
+    if (part === "]") state.inBracket = false;
+  }
+}
+function addText(parent, lines, x, cy, lineH, attrs, opts = {}) {
+  const t = el("text", Object.assign({ x }, attrs), parent);
+  const top = cy - ((lines.length - 1) * lineH) / 2;
+  const state = { inBracket: false };
+  lines.forEach((ln, i) => addLine(t, ln, x, top + i * lineH, opts, state));
+  return t;
+}
+function roundedPolyline(pts, r) {
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const A = pts[i - 1], P = pts[i], B = pts[i + 1];
+    const la = Math.hypot(P.x - A.x, P.y - A.y), lb = Math.hypot(B.x - P.x, B.y - P.y);
+    const k = Math.min(r, la / 2, lb / 2);
+    const p1 = { x: P.x - (k * (P.x - A.x)) / la, y: P.y - (k * (P.y - A.y)) / la };
+    const p2 = { x: P.x + (k * (B.x - P.x)) / lb, y: P.y + (k * (B.y - P.y)) / lb };
+    d += ` L${p1.x},${p1.y} Q${P.x},${P.y} ${p2.x},${p2.y}`;
+  }
+  const L = pts[pts.length - 1];
+  return d + ` L${L.x},${L.y}`;
+}
+// Small notched arrowhead
+function arrowHead(parent, tip, from, color) {
+  const dx = tip.x - from.x, dy = tip.y - from.y, len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+  const L = 9, Wd = 3.8, N = 6.2;
+  const p = (a, b) => `${tip.x - ux * a + px * b},${tip.y - uy * a + py * b}`;
+  el("path", { d: `M${tip.x},${tip.y} L${p(L, Wd)} L${p(N, 0)} L${p(L, -Wd)} Z`, fill: color }, parent);
+}
+
+// Right-angle route for one edge (top to bottom): leave the source bottom, run down the left of the label, enter the target top
+function orthoRoute(g, e, lab) {
+  const A = g.node(e.v), B = g.node(e.w);
+  const down = B.y >= A.y, s = down ? 1 : -1;
+  const pts = lab.points.map((p) => ({ x: p.x, y: p.y, h: 0 }));
+  const inner = pts.slice(1, -1);
+  if (lab.lines.length) {
+    let best = null;
+    for (const p of inner) if (!best || Math.abs(p.y - lab.y) < Math.abs(best.y - lab.y)) best = p;
+    if (best) { best.x = lab.x - lab.width / 2 + 6; best.h = lab.height / 2; lab.channel = best.x; }
+  }
+  const clampX = (x, n) => Math.max(n.x - n.width / 2 + 16, Math.min(n.x + n.width / 2 - 16, x));
+  const sx = clampX(inner.length ? inner[0].x : B.x, A), ex = clampX(inner.length ? inner[inner.length - 1].x : sx, B);
+  const way = [{ x: sx, y: A.y + (s * A.height) / 2, h: 0 }, ...inner, { x: ex, y: B.y - (s * B.height) / 2, h: 0 }];
+  const out = [way[0]];
+  for (let i = 1; i < way.length; i++) {
+    const p = out[out.length - 1], q = way[i];
+    if (Math.abs(p.x - q.x) < 6) {   // nearly aligned: straighten instead of a tiny step
+      q.x = i === way.length - 1 ? clampX(p.x, B) : p.x;
+      if (Math.abs(p.x - q.x) < 0.5) { out.push(q); continue; }
+    }
+    // The horizontal jog: when heading into a label, run it just above the label (away from the boxes above, so it does not seem to leave them)
+    const top = p.y + s * (p.h || 0), bot = q.y - s * q.h;
+    const ym = q.h > 0 ? bot - s * Math.min(8, Math.abs(bot - top) / 2) : (top + bot) / 2;
+    out.push({ x: p.x, y: ym }, { x: q.x, y: ym }, q);
+  }
+  // Drop points in the middle of straight runs
+  const clean = [out[0]];
+  for (let i = 1; i < out.length - 1; i++) {
+    const a = clean[clean.length - 1], b = out[i], c = out[i + 1];
+    const col = (Math.abs(a.x - b.x) < 0.5 && Math.abs(b.x - c.x) < 0.5) || (Math.abs(a.y - b.y) < 0.5 && Math.abs(b.y - c.y) < 0.5);
+    if (!col) clean.push(b);
+  }
+  clean.push(out[out.length - 1]);
+  return clean;
+}
+
+// Pre-compute every route, label position and the space they take (chart coordinates)
+function geometry(g, model) {
+  const isBreak = (id) => model.nodeClass[id] === "breaks";
+  const boxes = [], edges = [];
+  const lfont = labelFontCSS();
+  const textW = (lines) => Math.max(0, ...lines.map((l) => measure(l, lfont, CONFIG.labelSpacing)));
+  for (const id of g.nodes()) {
+    const n = g.node(id), m = 14;
+    boxes.push({ x1: n.x - n.width / 2 - m, x2: n.x + n.width / 2 + m, y1: n.y - n.height / 2 - m, y2: n.y + n.height / 2 + m });
+  }
+  for (const e of g.edges()) {
+    const lab = g.edge(e);
+    const red = isBreak(e.w) && e.v !== e.w;
+    if (lab.self) {
+      const A = g.node(e.v), R = A.x + A.width / 2;
+      const tx = R + 32, tw = textW(lab.lines), h = lab.lines.length * lab.lineH;
+      edges.push({ e, lab, red: false, self: true, R, cy: A.y, tx });
+      boxes.push({ x1: R, x2: tx + tw + 4, y1: A.y - h / 2 - 4, y2: A.y + h / 2 + 4 });
+      continue;
+    }
+    const pts = orthoRoute(g, e, lab);
+    let text = null;
+    if (lab.lines.length) {
+      const tx = (lab.channel != null ? lab.channel : lab.x - lab.width / 2 + 6) + 10, tw = textW(lab.lines), h = lab.lines.length * lab.lineH;
+      text = { x: tx, y: lab.y };
+      boxes.push({ x1: tx - 2, x2: tx + tw + 4, y1: lab.y - h / 2 - 2, y2: lab.y + h / 2 + 2 });
+    }
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], q = pts[i];
+      boxes.push({ x1: Math.min(p.x, q.x) - 6, x2: Math.max(p.x, q.x) + 6, y1: Math.min(p.y, q.y) - 6, y2: Math.max(p.y, q.y) + 6 });
+    }
+    edges.push({ e, lab, red, self: false, pts, text });
+  }
+  return { boxes, edges };
+}
+
+// Lowest occupied y over the span [x1, x2]
+function skyline(items, x1, x2, from) {
+  let y = from;
+  for (const b of items) if (b.x2 > x1 && b.x1 < x2) y = Math.max(y, b.y2);
+  return y;
+}
+
+function buildPoster(model, g) {
+  const G = g.graph(), M = CONFIG.margin, GAP = CONFIG.gap;
+  const geo = geometry(g, model);
+  const svg = el("svg", { xmlns: SVG_NS });
+  const defs = el("defs", {}, svg);
+  const fg = el("filter", { id: "grain", x: 0, y: 0, width: "100%", height: "100%" }, defs);
+  el("feTurbulence", { type: "fractalNoise", baseFrequency: 0.85, numOctaves: 2, seed: 4, stitchTiles: "stitch" }, fg);
+  el("feColorMatrix", { type: "matrix", values: "0 0 0 0 0.24  0 0 0 0 0.19  0 0 0 0 0.12  3.2 0 0 0 -2.0" }, fg);
+  const fb = el("filter", { id: "blotch", x: 0, y: 0, width: "100%", height: "100%" }, defs);
+  el("feTurbulence", { type: "fractalNoise", baseFrequency: 0.004, numOctaves: 3, seed: 9 }, fb);
+  el("feColorMatrix", { type: "matrix", values: "0 0 0 0 0.6  0 0 0 0 0.5  0 0 0 0 0.32  1.1 0 0 0 -0.55" }, fb);
+  const fi = el("filter", { id: "ink", x: "-2%", y: "-2%", width: "104%", height: "104%" }, defs);
+  el("feTurbulence", { type: "fractalNoise", baseFrequency: 0.045, numOctaves: 2, seed: 7, result: "n" }, fi);
+  el("feDisplacementMap", { in: "SourceGraphic", in2: "n", scale: CONFIG.inkWobble, xChannelSelector: "R", yChannelSelector: "G" }, fi);
+  const hp = el("pattern", { id: "hatch", width: CONFIG.hatchGap, height: CONFIG.hatchGap, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+  el("line", { x1: 0, y1: 0, x2: 0, y2: CONFIG.hatchGap, stroke: CONFIG.ink, "stroke-width": 0.9 }, hp);
+
+  const bg = el("rect", { x: 0, y: 0, fill: CONFIG.paper }, svg);
+  const blot = el("rect", { x: 0, y: 0, filter: "url(#blotch)", opacity: 0.07 }, svg);
+  const deco = el("g", {}, svg);      // title, legend, photos, card
+  const W = Math.max(Math.ceil(G.width) + 2 * M, 1100);
+  const placed = [];                  // everything placed so far (poster coordinates)
+
+  // ---- Title (top left) ----
+  const k = el("text", { x: M, y: M + 18, "font-family": CONFIG.fontNode, "font-size": 18, "letter-spacing": 3, fill: CONFIG.ink }, deco);
+  k.textContent = POSTER.kicker;
+  const t = el("text", { x: M - 4, y: M + 108, "font-family": CONFIG.fontTitle, "font-size": 72, "letter-spacing": 10, fill: CONFIG.ink }, deco);
+  t.textContent = POSTER.title;
+  addText(deco, [POSTER.subtitle], M, M + 162, 26, { "font-family": CONFIG.fontLabel, "font-size": 22, "letter-spacing": 1, fill: CONFIG.ink }, { italicLatin: true });
+  const titleW = Math.max(measure(POSTER.title, `72px ${CONFIG.fontTitle}`, 10), measure(POSTER.subtitle, `italic 22px ${CONFIG.fontLabel}`, 1));
+  placed.push({ x1: M - 8, x2: M + titleW + 10, y1: M - 10, y2: M + 178 });
+
+  // ---- Legend + stamp (top right; "legend": null in poster.json hides it) ----
+  const LWd = 330, lx = W - M - LWd, ly = M;
+  if (POSTER.legend) {
+  const lg = el("g", { filter: "url(#ink)" }, deco);
+  el("rect", { x: lx, y: ly, width: LWd, height: 128, rx: 6, fill: "#faf6ec", stroke: CONFIG.ink, "stroke-width": 1.3 }, lg);
+  const lt = el("text", { x: lx + 22, y: ly + 30, "font-family": CONFIG.fontNode, "font-size": 16, "letter-spacing": 2, fill: CONFIG.ink }, deco);
+  lt.textContent = POSTER.legend.title;
+  el("path", { d: rr(lx + 24, ly + 52, 36, 22, 6), fill: CONFIG.fills.breaks, stroke: CONFIG.ink, "stroke-width": 1.2 }, lg);
+  el("path", { d: rr(lx + 20, ly + 48, 44, 30, 8), fill: "none", stroke: CONFIG.red, "stroke-width": 1.4 }, lg);
+  addText(deco, [POSTER.legend.broken], lx + 78, ly + 63, 20, { "font-family": CONFIG.fontLabel, "font-size": 16, fill: CONFIG.ink }, {});
+  el("line", { x1: lx + 22, y1: ly + 102, x2: lx + 62, y2: ly + 102, stroke: CONFIG.redSoft, "stroke-width": 5, "stroke-linecap": "round", opacity: 0.6 }, lg);
+  el("line", { x1: lx + 22, y1: ly + 102, x2: lx + 62, y2: ly + 102, stroke: CONFIG.red, "stroke-width": 1.7 }, lg);
+  addText(deco, [POSTER.legend.redLine], lx + 78, ly + 102, 20, { "font-family": CONFIG.fontLabel, "font-size": 16, fill: CONFIG.ink }, {});
+  if (POSTER.stamp) {
+  const st = el("g", { transform: `translate(${lx + LWd - 40},${ly + 136}) rotate(-9)`, filter: "url(#ink)", opacity: 0.88 }, deco);
+  el("rect", { x: -60, y: -22, width: 120, height: 44, rx: 6, fill: "rgba(246,241,230,.6)", stroke: CONFIG.red, "stroke-width": 2 }, st);
+  el("rect", { x: -55, y: -17, width: 110, height: 34, rx: 4, fill: "none", stroke: CONFIG.red, "stroke-width": 1 }, st);
+  const stt = el("text", { x: 0, y: 1, "text-anchor": "middle", "dominant-baseline": "central", "font-family": CONFIG.fontStamp, "font-size": 17, "letter-spacing": 2, fill: CONFIG.red, "font-weight": 600 }, st);
+  stt.textContent = POSTER.stamp;
+  }
+  placed.push({ x1: lx - 8, x2: lx + LWd + 30, y1: ly - 8, y2: ly + (POSTER.stamp ? 165 : 136) });
+  }
+
+  // ---- Chart: as high as it goes without touching the title or legend ----
+  const gx = Math.round((W - G.width) / 2);
+  let gy = M;
+  for (const b of geo.boxes) for (const p of placed)
+    if (b.x2 + gx > p.x1 && b.x1 + gx < p.x2) gy = Math.max(gy, p.y2 + GAP - b.y1);
+  for (const b of geo.boxes) placed.push({ x1: b.x1 + gx, x2: b.x2 + gx, y1: b.y1 + gy, y2: b.y2 + gy });
+
+  // ---- Photos and problem card: each goes to the highest free spot (leftmost on ties) ----
+  const bestSpot = (w) => {
+    let best = null;
+    for (let cx = M; cx + w <= W - M; cx += 10) {
+      const cy = skyline(placed, cx - 10, cx + w + 10, M) + GAP;
+      if (!best || cy < best.y - 0.5) best = { x: cx, y: cy };
+    }
+    return best;
+  };
+  POSTER.photos.forEach((p, i) => {
+    const src = CONTENT.photos[i];
+    if (!src) return;
+    const pw = 270, phH = 316;
+    const { x, y } = bestSpot(pw);
+    const ph = el("g", { transform: `translate(${x + 5},${y + 8}) rotate(${p.rotate || 0} 130 150)` }, deco);
+    el("rect", { x: 4, y: 5, width: 260, height: 300, fill: "rgba(60,45,25,.16)" }, ph);
+    el("rect", { x: 0, y: 0, width: 260, height: 300, fill: "#fdfbf6", stroke: "#d8cfbd", "stroke-width": 1 }, ph);
+    el("image", { x: 10, y: 10, width: 240, height: 240, href: src, preserveAspectRatio: "xMidYMid slice" }, ph);
+    addText(ph, p.caption || [], 130, 268, 19, { "text-anchor": "middle", "font-family": CONFIG.fontLabel, "font-size": 15, fill: CONFIG.ink }, { italicLatin: true });
+    el("rect", { x: 92, y: -12, width: 76, height: 22, fill: "rgba(232,214,170,.8)", transform: "rotate(-4 130 0)" }, ph);
+    placed.push({ x1: x - 6, x2: x + pw + 6, y1: y - 6, y2: y + phH + 12 });
+  });
+  // ---- Problem card (skipped when poster.json has no "card") ----
+  if (POSTER.card && POSTER.card.items && POSTER.card.items.length) {
+  const cardW = 380, lineH = 24;
+  const items = POSTER.card.items.map((s) => wrapText(s, `16px ${CONFIG.fontLabel}`, 0.4, cardW - 74));
+  const cardH = 66 + items.reduce((a, it) => a + it.lines.length * lineH + 10, 0) + 8;
+  const spot = bestSpot(cardW + 12), x = spot.x + 6, cy0 = spot.y + 6;
+  const cg = el("g", { filter: "url(#ink)" }, deco);
+  el("rect", { x: x - 6, y: cy0 - 6, width: cardW + 12, height: cardH + 12, rx: 6, fill: "#c79a63", stroke: CONFIG.ink, "stroke-width": 1.3 }, cg);
+  el("rect", { x, y: cy0, width: cardW, height: cardH, rx: 3, fill: "#fbf7ee", stroke: CONFIG.ink, "stroke-width": 1.1 }, cg);
+  const ct = el("text", { x: x + cardW / 2, y: cy0 + 36, "text-anchor": "middle", "font-family": CONFIG.fontNode, "font-size": 17, "letter-spacing": 2, fill: CONFIG.ink }, deco);
+  ct.textContent = POSTER.card.title || "";
+  let iy = cy0 + 66;
+  items.forEach((it, i) => {
+    el("circle", { cx: x + 26, cy: iy + 11, r: 10.5, fill: CONFIG.red }, deco);
+    const n = el("text", { x: x + 26, y: iy + 11.5, "text-anchor": "middle", "dominant-baseline": "central", "font-family": CONFIG.fontNode, "font-size": 12.5, fill: "#fff", "font-weight": 700 }, deco);
+    n.textContent = i + 1;
+    addText(deco, it.lines, x + 48, iy + 11 + ((it.lines.length - 1) * lineH) / 2, lineH, { "font-family": CONFIG.fontLabel, "font-size": 16, "letter-spacing": 0.4, fill: CONFIG.ink }, { italicLatin: true });
+    iy += it.lines.length * lineH + 10;
+  });
+  placed.push({ x1: x - 6, x2: x + cardW + 6, y1: cy0 - 6, y2: cy0 + cardH + 6 });
+  }
+
+  const H = Math.ceil(Math.max(...placed.map((b) => b.y2)) + M);
+  svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  for (const r of [bg, blot]) { r.setAttribute("width", W); r.setAttribute("height", H); }
+
+  // ---- Draw the chart ----
+  const root = el("g", { transform: `translate(${gx},${gy})` }, svg);
+  const shapes = el("g", { filter: CONFIG.inkWobble > 0 ? "url(#ink)" : null }, root);
+  const texts = el("g", {}, root);
+  const labelAttrs = { "font-family": CONFIG.fontLabel, "font-size": CONFIG.labelFont, "letter-spacing": CONFIG.labelSpacing, fill: CONFIG.ink };
+  const labelOpts = { italicLatin: true, bracketColor: CONFIG.bracket };
+
+  for (const ed of geo.edges) {
+    const { lab } = ed, color = ed.red ? CONFIG.red : CONFIG.ink;
+    if (ed.self) {
+      const { R, cy } = ed;
+      el("path", { d: `M${R},${cy - 9} C${R + 24},${cy - 18} ${R + 26},${cy + 14} ${R + 6},${cy + 10}`, fill: "none", stroke: color, "stroke-width": 1.4 }, shapes);
+      arrowHead(shapes, { x: R + 1.5, y: cy + 9 }, { x: R + 14, y: cy + 13 }, color);
+      if (lab.lines.length) addText(texts, lab.lines, ed.tx, cy, lab.lineH, labelAttrs, labelOpts);
+      continue;
+    }
+    const pts = ed.pts, last = pts[pts.length - 1], prev = pts[pts.length - 2];
+    const len = Math.hypot(last.x - prev.x, last.y - prev.y) || 1;
+    const stop = { x: last.x - ((last.x - prev.x) / len) * 6, y: last.y - ((last.y - prev.y) / len) * 6 };
+    const d = roundedPolyline(pts.slice(0, -1).concat([stop]), CONFIG.corner);
+    if (ed.red) el("path", { d, fill: "none", stroke: CONFIG.redSoft, "stroke-width": 5, opacity: 0.5, "stroke-linecap": "round", "stroke-linejoin": "round" }, shapes);
+    el("path", { d, fill: "none", stroke: color, "stroke-width": ed.red ? 1.7 : 1.4, "stroke-linejoin": "round" }, shapes);
+    arrowHead(shapes, last, prev, color);
+    if (ed.text) addText(texts, lab.lines, ed.text.x, ed.text.y, lab.lineH, labelAttrs, labelOpts);
+  }
+
+  const isBreak = (id) => model.nodeClass[id] === "breaks";
+  for (const id of g.nodes()) {
+    const n = g.node(id);
+    if (id === START || id === END) {
+      el("circle", { cx: n.x, cy: n.y, r: 12, fill: "#fbf7ee", stroke: CONFIG.ink, "stroke-width": 1.4 }, shapes);
+      el("circle", { cx: n.x, cy: n.y, r: 7.5, fill: id === START ? CONFIG.ink : CONFIG.red }, shapes);
+      continue;
+    }
+    const cls = model.nodeClass[id];
+    const fill = CONFIG.fills[cls] || (model.classDefs[cls] && model.classDefs[cls].fill) || CONFIG.fills.default;
+    const x0 = n.x - n.width / 2, y0 = n.y - n.height / 2, o = CONFIG.shadowOffset;
+    el("path", { d: rr(x0 + o, y0 + o, n.width, n.height, CONFIG.radius), fill: "url(#hatch)", opacity: 0.85 }, shapes);
+    if (isBreak(id)) {
+      const ring = rr(x0 - 6, y0 - 6, n.width + 12, n.height + 12, CONFIG.radius + 5);
+      el("path", { d: ring, fill: "none", stroke: CONFIG.redSoft, "stroke-width": 4, opacity: 0.5 }, shapes);
+      el("path", { d: ring, fill: "none", stroke: CONFIG.red, "stroke-width": 1.5 }, shapes);
+    }
+    el("path", { d: rr(x0, y0, n.width, n.height, CONFIG.radius), fill, stroke: CONFIG.ink, "stroke-width": 1.6 }, shapes);
+    addText(texts, n.lines, n.x, n.y, n.lineH, { "text-anchor": "middle", "font-family": CONFIG.fontNode, "font-size": CONFIG.nodeFont, "letter-spacing": CONFIG.nodeSpacing, fill: CONFIG.ink }, {});
+    if (isBreak(id)) {
+      const num = model.breakOrder.indexOf(id) + 1;
+      el("circle", { cx: x0 + 4, cy: y0 + 2, r: 12, fill: CONFIG.red, stroke: CONFIG.paper, "stroke-width": 2 }, texts);
+      const nt = el("text", { x: x0 + 4, y: y0 + 2.5, "text-anchor": "middle", "dominant-baseline": "central", "font-family": CONFIG.fontNode, "font-size": 13.5, fill: "#fff", "font-weight": 700 }, texts);
+      nt.textContent = num;
+    }
+  }
+
+  if (CONFIG.grain) el("rect", { x: 0, y: 0, width: W, height: H, filter: "url(#grain)", opacity: 0.07, "pointer-events": "none" }, svg);
+  return svg;
+}
+
+// ---------- 5. Page ----------
+const $ = (id) => document.getElementById(id);
+let model = null, graph = null;
+function rebuild() {
+  $("msg").textContent = ""; delete document.body.dataset.error;
+  try { model = parseMermaid($("src").value); graph = layoutGraph(model); redraw(); }
+  catch (err) { $("msg").textContent = T.failed + err.message; document.body.dataset.error = err.message; }
+  const svg = $("poster").querySelector("svg");
+  if (svg) { document.body.dataset.w = svg.getAttribute("width"); document.body.dataset.h = svg.getAttribute("height"); }
+  document.body.dataset.ready = "1";
+}
+function redraw() { if (graph) $("poster").replaceChildren(buildPoster(model, graph)); }
+function download(name, blob) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const svgString = () => '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString($("poster").querySelector("svg"));
+function exportPng() {
+  const svg = $("poster").querySelector("svg"), s = CONFIG.pngScale;
+  const w = +svg.getAttribute("width"), h = +svg.getAttribute("height");
+  const url = URL.createObjectURL(new Blob([svgString()], { type: "image/svg+xml" }));
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement("canvas"); c.width = w * s; c.height = h * s;
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    c.toBlob((b) => download((POSTER.title || T.file) + ".png", b), "image/png");
+  };
+  img.onerror = () => { $("msg").textContent = T.pngFailed; };
+  img.src = url;
+}
+window.addEventListener("DOMContentLoaded", () => {
+  if (typeof dagre === "undefined") { $("msg").textContent = T.noDagre; document.body.dataset.error = "no dagre"; document.body.dataset.ready = "1"; return; }
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((n) => { if (T[n.dataset.i18n]) n.textContent = T[n.dataset.i18n]; });
+  if (location.hash === "#bare") document.body.classList.add("bare");   // poster only (make_poster.py exports from this view)
+  $("src").value = CONTENT.mermaid;
+  $("wobble").value = CONFIG.inkWobble; $("wobbleVal").textContent = CONFIG.inkWobble; $("grain").checked = CONFIG.grain;
+  $("wobble").addEventListener("input", (e) => { CONFIG.inkWobble = +e.target.value; $("wobbleVal").textContent = e.target.value; redraw(); });
+  $("grain").addEventListener("change", (e) => { CONFIG.grain = e.target.checked; redraw(); });
+  $("pngBtn").addEventListener("click", exportPng);
+  $("svgBtn").addEventListener("click", () => download((POSTER.title || T.file) + ".svg", new Blob([svgString()], { type: "image/svg+xml" })));
+  $("redrawBtn").addEventListener("click", rebuild);
+  // Measure text only after fonts are ready, otherwise line wrapping is off
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(rebuild);
+});
+</script>
+</body>
+</html>

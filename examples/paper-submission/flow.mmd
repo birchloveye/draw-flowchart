@@ -1,0 +1,33 @@
+%% Converted from chart.mmd (pstack statechart) by make_poster.py --from-statechart
+%% Problem numbers follow the order of the 'breaks' class line.
+stateDiagram-v2
+  s0: Drafting
+  s1: Co-authors reading
+  s2: With the editor
+  s3: Rejected
+  s4: Under review
+  s5: Major revision
+  s6: Minor revision
+  s7: Accepted
+  s8: Lost in the system
+  s9: Under review at two journals
+  [*] --> s0
+  s0 --> s1: you finish the draft
+  s1 --> s0: they ask for changes
+  s1 --> s2: everyone signs off
+  s2 --> s3: desk reject
+  s2 --> s4: sent to reviewers
+  s3 --> s0: you try another journal
+  s4 --> s3: reviews: reject
+  s4 --> s5: reviews: major
+  s4 --> s6: reviews: minor
+  s4 --> s4: months pass
+  s5 --> s4: you revise and resubmit
+  s6 --> s7: you fix the small things
+  s4 --> s8: a reviewer vanishes [after months]
+  s4 --> s9: you submit elsewhere [after months of silence]
+  class s0,s1 blue
+  class s2,s4,s5,s6 cream
+  class s3 wood
+  class s7 lavender
+  class s8,s9 breaks

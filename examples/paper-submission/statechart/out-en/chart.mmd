@@ -1,0 +1,62 @@
+---
+title: "A submission"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: writing
+    lg1: journal
+    lg2: done
+    lg3: setback
+    lg4: Breaks NoDeadlock or NoDualSubmission
+    lg5: Path to the NoDeadlock or NoDualSubmission bug
+  }
+  class lg0 blue
+  class lg1 yellow
+  class lg2 purple
+  class lg3 tan
+  class lg4 breaks
+  class lg5 bugPath
+  s0: Drafting
+  s1: Co-authors reading
+  s2: With the editor
+  s3: Rejected
+  s4: Under review
+  s5: Major revision
+  s6: Minor revision
+  s7: Accepted
+  s8: Lost in the system
+  s9: Under review at two journals
+  [*] --> s0
+  s0 --> s1: you finish the draft
+  s1 --> s0: they ask for changes
+  s1 --> s2: everyone signs off
+  s2 --> s3: desk reject
+  s2 --> s4: sent to reviewers
+  s3 --> s0: you try another journal
+  s4 --> s3: reviews: reject
+  s4 --> s5: reviews: major
+  s4 --> s6: reviews: minor
+  s4 --> s4: months pass
+  s5 --> s4: you revise and resubmit
+  s6 --> s7: you fix the small things
+  s4 --> s8: a reviewer vanishes [after months]
+  s4 --> s9: you submit elsewhere [after months of silence]
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s0 bugPath
+  class s1 blue
+  class s1 bugPath
+  class s2 yellow
+  class s2 bugPath
+  class s3 tan
+  class s4 yellow
+  class s4 bugPath
+  class s5 yellow
+  class s6 yellow
+  class s7 purple
+  class s8 tan
+  class s8 breaks
+  class s8 bugPath
+  class s9 tan
+  class s9 breaks
+  class s9 bugPath

@@ -1,0 +1,22 @@
+{
+  "name": "draw-flowchart",
+  "owner": {
+    "name": "birchloveye"
+  },
+  "metadata": {
+    "description": "Draw flowcharts and state diagrams as paper-style posters (HTML, PNG, SVG), optionally checked with pstack's /statechart.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "draw-flowchart",
+      "description": "Draw flowcharts and state diagrams as paper-style posters (HTML, PNG, SVG), optionally checked with pstack's /statechart.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/draw-flowchart"
+      ],
+      "version": "1.0.0"
+    }
+  ]
+}
